@@ -876,7 +876,40 @@
             </div>
             <div id="compositeControls" style="display: none; gap: 10px;">
               <div class="block-title">A/B Composite Rules</div>
-              <div class="hint">Image B is processed with the same "Checkerboard" layout to produce B'. The final pixel uses the color from image A if A's alpha is greater than 0; only fully transparent pixels in A show the corresponding B' pixel.</div>
+              <div class="hint">Image B is converted to B' using the selected reveal pattern. The final pixel uses A wherever A is not fully transparent; transparent A pixels reveal B'.</div>
+
+              <label for="abPatternSelect">Reveal Pattern</label>
+              <select id="abPatternSelect">
+                <option value="classic">Classic 2×2 Checker</option>
+                <option value="checker4">Fine Checker 4×4</option>
+                <option value="checker8">Fine Checker 8×8</option>
+                <option value="diamond4">Diamond 4×4</option>
+                <option value="diamond8">Diamond 8×8</option>
+                <option value="rotatedDiamond8">Rotated Diamond 8×8</option>
+                <option value="diagonal">Diagonal Bands</option>
+                <option value="antiDiagonal">Anti-Diagonal Bands</option>
+                <option value="crosshatch">Crosshatch</option>
+                <option value="bayer4">Bayer Ordered 4×4</option>
+                <option value="bayer8">Bayer Ordered 8×8</option>
+                <option value="dotGrid">Dot Grid</option>
+                <option value="offsetDot">Offset Dot</option>
+                <option value="stipple">Fine Stipple</option>
+                <option value="clustered">Clustered Stipple</option>
+                <option value="blue16">Blue-Noise Approximation 16×16</option>
+                <option value="random16">Deterministic Random 16×16</option>
+              </select>
+
+              <label for="abPatternScale">Pattern Scale</label>
+              <select id="abPatternScale">
+                <option value="1">1×</option>
+                <option value="2">2×</option>
+                <option value="3">3×</option>
+                <option value="4">4×</option>
+                <option value="6">6×</option>
+                <option value="8">8×</option>
+              </select>
+
+              <div class="hint">Scale changes the physical size of the pattern. Start with 1× for fine masks.</div>
             </div>
             <div id="paintControls" style="display: none; gap: 10px;">
               <div class="block-title">Paint Composite</div>
