@@ -789,6 +789,52 @@
       color: var(--text);
       transform: none;
     }
+  
+
+    /* ===== UI refresh — presentation only; image-processing code is unchanged ===== */
+    :root {
+      --bg: #f3f5fb;
+      --panel: rgba(255,255,255,0.82);
+      --panel-strong: rgba(255,255,255,0.96);
+      --line: rgba(20, 29, 55, 0.10);
+      --text: #172033;
+      --muted: #68748b;
+      --accent: #5b45d8;
+      --shadow: 0 20px 60px rgba(35, 42, 75, 0.10);
+      --radius: 20px;
+    }
+    body {
+      background:
+        radial-gradient(circle at 8% 8%, rgba(111, 91, 230, 0.13), transparent 27%),
+        radial-gradient(circle at 92% 12%, rgba(42, 181, 195, 0.12), transparent 25%),
+        radial-gradient(circle at 80% 90%, rgba(236, 118, 168, 0.10), transparent 28%),
+        linear-gradient(180deg, #fafbff 0%, #eef1f8 100%);
+    }
+    .hero { padding: 30px 32px; overflow: hidden; position: relative; }
+    .hero::after {
+      content: '';
+      position: absolute; inset: auto -90px -120px auto; width: 300px; height: 300px;
+      background: repeating-linear-gradient(45deg, rgba(91,69,216,.05) 0 2px, transparent 2px 10px);
+      transform: rotate(-8deg); pointer-events: none;
+    }
+    .hero-title-row { display:flex; justify-content:space-between; gap:20px; align-items:flex-start; position:relative; z-index:1; }
+    .hero-subtitle { margin: 0; max-width: 760px; color: var(--muted); font-size: 14px; line-height: 1.65; }
+    .hero-status { display:inline-flex; align-items:center; gap:8px; white-space:nowrap; padding:9px 12px; border:1px solid var(--line); border-radius:999px; background:rgba(255,255,255,.75); color:var(--muted); font-size:12px; font-weight:700; }
+    .status-dot { width:8px; height:8px; border-radius:50%; background:#35b779; box-shadow:0 0 0 4px rgba(53,183,121,.12); }
+    .block { border-color: rgba(30,40,70,.08); box-shadow: 0 8px 24px rgba(30,40,70,.035); }
+    .block-title-row { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .safe-badge { display:inline-flex; align-items:center; padding:5px 8px; border-radius:999px; background:rgba(53,183,121,.10); color:#23845a; font-size:10px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; }
+    select, button, .dropzone, .composite-drop { transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease, background 160ms ease; }
+    select:focus, button:focus-visible, input:focus-visible, .dropzone:focus-visible { outline:2px solid rgba(91,69,216,.28); outline-offset:2px; }
+    select:hover, .composite-drop:hover { border-color: rgba(91,69,216,.28); }
+    .mode-tabs { background:rgba(91,69,216,.07); }
+    .mode-tab.active { color:var(--accent); box-shadow:0 3px 10px rgba(31,35,70,.10); }
+    button.primary { background:linear-gradient(135deg,#5740cf,#765fe4); box-shadow:0 12px 26px rgba(91,69,216,.20); }
+    .pattern-tip { display:flex; gap:9px; align-items:flex-start; padding:10px 11px; border-radius:13px; background:linear-gradient(135deg,rgba(91,69,216,.07),rgba(42,181,195,.06)); border:1px solid rgba(91,69,216,.10); color:var(--muted); font-size:12px; line-height:1.55; }
+    .pattern-tip span { color:var(--accent); font-size:14px; line-height:1.4; }
+    .pattern-tip strong { color:var(--text); }
+    @media (max-width:720px) { .hero-title-row { flex-direction:column; } .hero { padding:22px 20px; } }
+
   </style>
 </head>
 <body>
@@ -804,7 +850,7 @@
           <a href="how-it-works_jp.html" style="color: #274a91; text-decoration: none; background: rgba(39,74,145,0.1); padding: 4px 10px; border-radius: 999px; font-weight: 700;">How it works</a>
         </div>
       </div>
-      <h1>Color Tap me Image Generator</h1>
+      <div class="hero-title-row"><div><h1>Color Tap me Image Generator</h1><p class="hero-subtitle">Create X-friendly tap-to-reveal images with classic, geometric, organic and experimental masks.</p></div><div class="hero-status"><span class="status-dot"></span><span>Runs locally</span></div></div>
       <div class="hero-meta">
         <a class="creator-badge" href="https://x.com/dare_aka2" target="_blank" rel="noopener noreferrer" aria-label="Creator's X account @dare_aka2">
           <span class="icon-wrap" aria-hidden="true">
@@ -875,7 +921,7 @@
               <input id="tileColorInput" type="color" value="#ffffff" style="width: 100%; height: 44px; border: 1px solid rgba(21, 32, 56, 0.14); border-radius: 14px; cursor: pointer;">
             </div>
             <div id="compositeControls" style="display: none; gap: 10px;">
-              <div class="block-title">A/B Composite Rules</div>
+              <div class="block-title-row"><div class="block-title">A/B Composite Rules</div><span class="safe-badge">PNG8 / X-friendly</span></div>
               <div class="hint">Image B is converted to B' using the selected reveal pattern. The final pixel uses A wherever A is not fully transparent; transparent A pixels reveal B'.</div>
 
               <label for="abPatternSelect">Reveal Pattern</label>
@@ -897,6 +943,15 @@
                 <option value="clustered">Clustered Stipple</option>
                 <option value="blue16">Blue-Noise Approximation 16×16</option>
                 <option value="random16">Deterministic Random 16×16</option>
+                <option value="rings16">Concentric Rings 16×16</option>
+                <option value="waves16">Soft Wave 16×16</option>
+                <option value="zigzag8">Zigzag Weave 8×8</option>
+                <option value="herringbone16">Herringbone 16×16</option>
+                <option value="radial16">Radial Sectors 16×16</option>
+                <option value="spiral16">Spiral 16×16</option>
+                <option value="petals16">Petal / Rosette 16×16</option>
+                <option value="pinwheel16">Pinwheel 16×16</option>
+                <option value="noise32">Fine Noise 32×32</option>
               </select>
 
               <label for="abPatternScale">Pattern Scale</label>
@@ -909,7 +964,7 @@
                 <option value="8">8×</option>
               </select>
 
-              <div class="hint">Scale changes the physical size of the pattern. Start with 1× for fine masks.</div>
+              <div class="pattern-tip"><span>✦</span><div><strong>Tip:</strong> 1×–2× gives the finest texture. Try 3×–4× for visible geometric shapes. The new creative masks are experimental, so compare the preview before posting.</div></div>
             </div>
             <div id="paintControls" style="display: none; gap: 10px;">
               <div class="block-title">Paint Composite</div>
