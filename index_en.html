@@ -835,6 +835,14 @@
     .pattern-tip strong { color:var(--text); }
     @media (max-width:720px) { .hero-title-row { flex-direction:column; } .hero { padding:22px 20px; } }
 
+  
+    .reference-pattern-controls{padding:12px;border:1px solid rgba(91,69,216,.14);border-radius:15px;background:linear-gradient(135deg,rgba(91,69,216,.045),rgba(42,181,195,.035));}
+    .complex-title{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin-bottom:9px;}
+    .complex-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px;align-items:center;}
+    .complex-grid label{font-size:12px;color:var(--muted);font-weight:650;}
+    .complex-grid select{width:100%;}
+    @media(max-width:720px){.complex-grid{grid-template-columns:1fr;}}
+
   </style>
 </head>
 <body>
@@ -931,7 +939,8 @@
                 <option value="checker8">Fine Checker 8×8</option>
                 <option value="diamond4">Diamond 4×4</option>
                 <option value="diamond8">Diamond 8×8</option>
-                <option value="referenceDiamond12">★ Reference Diamond • 12 Dots</option>
+                <option value="referenceLayered">★ REFERENCE • Layered Diamond + 12 Dots</option>
+                <option value="referenceDiamond12">Reference Diamond • 12 Dots</option>
                 <option value="referenceDiamond12Bold">★ Reference Diamond • 12 Bold Dots</option>
                 <option value="microDiamond12">Micro-Diamond • 12 Dots</option>
                 <option value="microDiamond12Bold">Micro-Diamond • 12 Bold Dots</option>
@@ -970,7 +979,36 @@
                 <option value="8">8×</option>
               </select>
 
-              <div class="pattern-tip"><span>✦</span><div><strong>Reference Diamond:</strong> large dark diamonds separated by a smaller 12-dot light diamond. This is intentionally much larger and more open than the ordinary Diamond patterns.</div></div>
+              <div id="referencePatternControls" class="reference-pattern-controls" style="display:none;">
+                <div class="complex-title">Reference Pattern Controls</div>
+                <div class="complex-grid">
+                  <label for="refTileSize">Large diamond spacing</label>
+                  <select id="refTileSize">
+                    <option value="48">48 px — compact</option>
+                    <option value="64" selected>64 px — reference</option>
+                    <option value="80">80 px — wide</option>
+                    <option value="96">96 px — extra wide</option>
+                  </select>
+                  <label for="refDotCount">Inner diamond dots</label>
+                  <select id="refDotCount">
+                    <option value="12" selected>12 — 2 / 4 / 4 / 2</option>
+                    <option value="24">24 — denser</option>
+                  </select>
+                  <label for="refDotSize">Dot size</label>
+                  <select id="refDotSize">
+                    <option value="1" selected>1 px — fine</option>
+                    <option value="2">2 px — visible</option>
+                    <option value="3">3 px — bold</option>
+                  </select>
+                  <label for="refOffset">Diamond offset</label>
+                  <select id="refOffset">
+                    <option value="0" selected>Centered</option>
+                    <option value="half">Half-tile stagger</option>
+                  </select>
+                </div>
+                <div class="hint">This is a two-scale mask: a large dark diamond field with a small dotted diamond inside each repeat. It is separate from the ordinary diamond/checker patterns.</div>
+              </div>
+              <div class="pattern-tip"><span>✦</span><div><strong>Reference Pattern:</strong> use the dedicated controls above to tune the large diamond spacing and the small dotted diamond.</div></div>
             </div>
             <div id="paintControls" style="display: none; gap: 10px;">
               <div class="block-title">Paint Composite</div>
