@@ -168,6 +168,35 @@
   }
   addOptions();
 
+  // ---- 4. put the pattern name (and scale) into the saved filename ----
+  function slugify(text) {
+    return String(text)
+      .replace(/×/g, 'x')
+      .replace(/[★•]/g, ' ')
+      .replace(/[^A-Za-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .toLowerCase();
+  }
+  var originalDownloadBlob = window.downloadBlob;
+  if (typeof originalDownloadBlob === 'function') {
+    window.downloadBlob = function (blob, filename) {
+      try {
+        var re = /_(tapme_composite|paint_composite|checkerboard)\.png$/;
+        var select = document.getElementById('abPatternSelect');
+        if (select && typeof filename === 'string' && re.test(filename)) {
+          var opt = select.options[select.selectedIndex];
+          var slug = slugify(opt ? opt.textContent : select.value);
+          var scaleControl = document.getElementById('abPatternScale');
+          var scale = scaleControl ? Math.max(1, Number(scaleControl.value) || 1) : 1;
+          if (slug) {
+            filename = filename.replace(re, '_' + slug + (scale > 1 ? '_' + scale + 'x' : '') + '.png');
+          }
+        }
+      } catch (e) { /* keep the original filename on any problem */ }
+      return originalDownloadBlob(blob, filename);
+    };
+  }
+
   // exposed for testing / reuse
   window.TAPME_EXTRA_PATTERNS = PATTERNS;
 })();
