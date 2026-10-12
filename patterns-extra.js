@@ -48,6 +48,39 @@
     return row.map(function (v, x) { return (v || REF16[y][(x + 15) & 15]) ? 1 : 0; });
   });
 
+  // ---- 1b. Native-size versions of the reference lattice ----
+  // The reference tile is made of clusters of 12 dots: a tilted 4x3 / 3x4 grid on a checker lattice.
+  // This builder redraws the same layout at other sizes (every dot stays exactly 1 px, spacing stays regular).
+  //   P = tile size, a x b = cluster grid (a >= b). Cluster width = a + b - 1 px.
+  function buildRefLattice(P, a, b) {
+    var H = P / 2, w = a + b - 1;
+    var bm = [];
+    for (var yy = 0; yy < P; yy++) { bm.push(new Array(P).fill(0)); }
+    function addRect(minx, na, nb, mirror) {
+      var u0 = minx + nb - 1, v0 = minx - (nb - 1);
+      for (var i = 0; i < na; i++) {
+        for (var j = 0; j < nb; j++) {
+          var u = u0 + 2 * i, v = v0 + 2 * j;
+          var x = (u + v) / 2, y = (u - v) / 2;
+          if (mirror) y = (H + w - 1) - y;
+          bm[m(y, P)][m(x, P)] = 1;
+        }
+      }
+    }
+    addRect(0, a, b, false);
+    addRect(H, b, a, false);
+    addRect(0, a, b, true);
+    addRect(H, b, a, true);
+    return bm;
+  }
+  function tilePattern(bm) {
+    var P = bm.length;
+    return function (sx, sy) { return bm[m(sy, P)][m(sx, P)] === 1; };
+  }
+  var REF20 = buildRefLattice(20, 5, 3);   // ~1.25x  (15 dots per cluster)
+  var REF24 = buildRefLattice(24, 6, 4);   // ~1.5x   (24 dots per cluster)
+  var REF28 = buildRefLattice(28, 7, 5);   // ~1.75x  (35 dots per cluster)
+
   // ---- pattern table ----
   var PATTERNS = [
     {
@@ -59,6 +92,21 @@
       id: 'xLatticeRef16Bold',
       label: '★ Diamond Lattice 16×16 • Bold dots',
       fn: function (sx, sy) { return REF16_BOLD[sy & 15][sx & 15] === 1; }
+    },
+    {
+      id: 'xLatticeRef20',
+      label: '★ Diamond Lattice 20×20 (1.25× size)',
+      fn: tilePattern(REF20)
+    },
+    {
+      id: 'xLatticeRef24',
+      label: '★ Diamond Lattice 24×24 (1.5× size)',
+      fn: tilePattern(REF24)
+    },
+    {
+      id: 'xLatticeRef28',
+      label: '★ Diamond Lattice 28×28 (1.75× size)',
+      fn: tilePattern(REF28)
     },
     {
       id: 'xLatticeRef16Inv',
