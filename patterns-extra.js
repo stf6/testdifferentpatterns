@@ -197,6 +197,26 @@
     };
   }
 
+  // ---- 5. add a 1.5x option to Pattern Scale (script.min.js already reads it with Number()) ----
+  function addScaleOption() {
+    var scaleSelect = document.getElementById('abPatternScale');
+    if (!scaleSelect || !scaleSelect.options) return;
+    for (var i = 0; i < scaleSelect.options.length; i++) {
+      if (scaleSelect.options[i].value === '1.5') return;
+    }
+    var opt = document.createElement('option');
+    opt.value = '1.5';
+    opt.textContent = '1.5×';
+    var before = null;
+    for (var j = 0; j < scaleSelect.options.length; j++) {
+      if (scaleSelect.options[j].value === '2') { before = scaleSelect.options[j]; break; }
+    }
+    var previous = scaleSelect.value;
+    scaleSelect.insertBefore(opt, before);
+    scaleSelect.value = previous;
+  }
+  addScaleOption();
+
   // exposed for testing / reuse
   window.TAPME_EXTRA_PATTERNS = PATTERNS;
 })();
