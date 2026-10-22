@@ -48,8 +48,26 @@
     return row.map(function (v, x) { return (v || REF16[y][(x + 15) & 15]) ? 1 : 0; });
   });
 
+  // ---- 1b. Resample-trick tile (measured from a working 2016x3584 original; 6 of 16 pixels = 37.5 %) ----
+  // Meant for LARGE originals (e.g. 2016x3584). When X shrinks such an image for the feed/preview, this fine
+  // pattern turns into a much sparser one, so the shrunken copy shows mostly image A.
+  var RES4_ROWS = [
+    '...#',
+    '#.#.',
+    '.#..',
+    '#.#.'
+  ];
+  var RES4 = RES4_ROWS.map(function (r) {
+    return r.split('').map(function (c) { return c === '#' ? 1 : 0; });
+  });
+
   // ---- pattern table ----
   var PATTERNS = [
+    {
+      id: 'xRes4',
+      label: '★ Resample 4×4 • 37.5% (for 2016×3584 originals)',
+      fn: function (sx, sy) { return RES4[sy & 3][sx & 3] === 1; }
+    },
     {
       id: 'xLatticeRef16',
       label: '★ Diamond Lattice 16×16 (reference tile)',
