@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Depth to Magic Eye / 3D Pair</title>
+  <style>
+    :root { --bg:#f3f5fb; --panel:rgba(255,255,255,.86); --line:rgba(20,29,55,.10); --text:#172033; --muted:#68748b; --accent:#5b45d8; --radius:18px; }
+    * { box-sizing: border-box; }
+    body { margin:0; color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+      background: radial-gradient(circle at 8% 8%, rgba(111,91,230,.13), transparent 27%), radial-gradient(circle at 92% 12%, rgba(42,181,195,.12), transparent 25%), linear-gradient(180deg,#fafbff,#eef1f8); min-height:100vh; }
+    .page { width:min(1180px, calc(100% - 24px)); margin:16px auto 32px; display:grid; gap:14px; }
+    .panel { background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:16px; box-shadow:0 14px 40px rgba(35,42,75,.08); }
+    h1 { margin:4px 0 6px; font-size:clamp(24px,4vw,34px); letter-spacing:-.02em; }
+    h2 { margin:0 0 8px; font-size:14px; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); }
+    p, .hint { color:var(--muted); font-size:13px; line-height:1.65; margin:0; }
+    a { color:var(--accent); }
+    .layout { display:grid; grid-template-columns:minmax(300px,360px) minmax(0,1fr); gap:14px; align-items:start; }
+    @media (max-width:900px){ .layout{ grid-template-columns:1fr; } }
+    .controls { display:grid; gap:12px; }
+    .block { border:1px solid var(--line); border-radius:14px; background:#fff; padding:12px; display:grid; gap:9px; }
+    label { font-size:13px; font-weight:700; display:flex; justify-content:space-between; gap:8px; }
+    label span.val { font-weight:600; color:var(--muted); }
+    select, button, input[type=file] { width:100%; border-radius:12px; border:1px solid rgba(21,32,56,.14); background:#fff; color:var(--text); font:inherit; padding:11px 12px; }
+    button { font-weight:800; cursor:pointer; }
+    button.primary { background:linear-gradient(135deg,#5740cf,#765fe4); color:#fff; border-color:transparent; box-shadow:0 10px 22px rgba(91,69,216,.2); }
+    button:disabled { opacity:.45; cursor:not-allowed; }
+    input[type=range] { width:100%; }
+    .row2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .check { display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; }
+    .check input { width:auto; }
+    .status { font-size:13px; color:var(--muted); min-height:1.4em; }
+    .progress { height:6px; border-radius:3px; background:rgba(21,32,56,.08); overflow:hidden; display:none; }
+    .progress > i { display:block; height:100%; width:0; background:var(--accent); transition:width .15s; }
+    .stage { background:#111; border-radius:14px; overflow:auto; max-height:80vh; text-align:center; }
+    .stage canvas { max-width:100%; height:auto; display:block; margin:0 auto; }
+    .thumbs { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .thumbs figure { margin:0; } .thumbs figcaption { font-size:11px; color:var(--muted); text-align:center; margin-top:3px; }
+    .thumbs canvas { width:100%; height:auto; border-radius:10px; background:#e9ebf3; display:block; }
+    .hidden { display:none !important; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <section class="panel">
+    <h1>Depth to Magic Eye / 3D Pair</h1>
+    <p>Turn a normal image into a Magic Eye picture (parallel viewing) or a side-by-side stereo pair. Everything runs in your browser. Automatic depth uses an AI model that is downloaded the first time (tens of MB) and then cached.
+      &nbsp;<a href="index_en.html">Back to the Tap me generator</a></p>
+  </section>
+
+  <div class="layout">
+    <section class="panel controls">
+      <div class="block">
+        <h2>1. Image and depth</h2>
+        <label for="imgFile">Image</label>
+        <input id="imgFile" type="file" accept="image/*">
+        <button id="autoDepthBtn" disabled>Estimate depth automatically (AI)</button>
+        <label for="depthFile">...or upload your own depth map (optional)</label>
+        <input id="depthFile" type="file" accept="image/*">
+        <label class="check"><input id="invertDepth" type="checkbox"> Invert depth (use if near and far look swapped)</label>
+        <label for="smooth">Depth smoothing <span class="val" id="smoothVal">6</span></label>
+        <input id="smooth" type="range" min="0" max="30" value="6">
+        <div class="progress" id="progress"><i id="progressBar"></i></div>
+        <div class="status" id="depthStatus">Load an image to begin.</div>
+        <div class="thumbs"><figure><canvas id="srcThumb" width="10" height="10"></canvas><figcaption>Image</figcaption></figure><figure><canvas id="depthThumb" width="10" height="10"></canvas><figcaption>Depth (white = near)</figcaption></figure></div>
+      </div>
+
+      <div class="block">
+        <h2>2. Output</h2>
+        <label for="mode">Mode</label>
+        <select id="mode">
+          <option value="magic">Magic Eye (parallel viewing)</option>
+          <option value="pair-parallel">Side-by-side pair (parallel viewing)</option>
+          <option value="pair-cross">Side-by-side pair (cross-eye viewing)</option>
+        </select>
+        <label for="outWidth">Width of each picture (px)</label>
+        <select id="outWidth"><option>1024</option><option selected>1600</option><option>2048</option><option>3072</option><option>4096</option></select>
+
+        <div id="magicControls" class="controls" style="gap:9px">
+          <label for="strip">Strip width <span class="val" id="stripVal"></span></label>
+          <input id="strip" type="range" min="40" max="400" value="200">
+          <label for="mu">Depth strength <span class="val" id="muVal">0.33</span></label>
+          <input id="mu" type="range" min="10" max="55" value="33">
+          <label for="pattern">Pattern</label>
+          <select id="pattern"><option value="bw">Random dots (black and white)</option><option value="color">Random dots (color)</option><option value="soft">Soft color noise</option></select>
+          <label for="dotSize">Dot size <span class="val" id="dotVal">1</span></label>
+          <input id="dotSize" type="range" min="1" max="6" value="1">
+          <label class="check"><input id="guides" type="checkbox" checked> Show two guide dots at the top</label>
+          <button id="reroll" type="button">New random pattern</button>
+        </div>
+
+        <div id="pairControls" class="controls hidden" style="gap:9px">
+          <label for="shift">Depth strength <span class="val" id="shiftVal">3.0%</span></label>
+          <input id="shift" type="range" min="0" max="80" value="30">
+          <label for="focus">Focus plane (what sits at screen depth) <span class="val" id="focusVal">0.50</span></label>
+          <input id="focus" type="range" min="0" max="100" value="50">
+        </div>
+
+        <button id="generate" class="primary" disabled>Generate</button>
+        <button id="download" disabled>Save PNG</button>
+        <div class="status" id="genStatus"></div>
+      </div>
+
+      <div class="block">
+        <h2>How to view</h2>
+        <p><b>Parallel (Magic Eye):</b> keep the picture at arm's length and look "through" the screen as if at something far behind it, so the two guide dots turn into three. Hold your gaze softly and the 3D shape appears. If it will not settle, make the image smaller on screen or change the strip width.</p>
+        <p><b>Cross-eye:</b> cross your eyes slightly so the two pictures overlap into a third one in the middle.</p>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="stage"><canvas id="outCanvas" width="10" height="10"></canvas></div>
+    </section>
+  </div>
+</div>
+
+<script>
+/*LIB_START*/
+function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; var t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+
+function boxBlur(arr,w,h,r){
+  if(r<1) return arr;
+  var tmp=new Float32Array(arr.length), out=new Float32Array(arr.length), n=2*r+1, x,y,i,sum;
+  for(y=0;y<h;y++){
+    var o=y*w; sum=0;
+    for(i=-r;i<=r;i++) sum+=arr[o+Math.min(w-1,Math.max(0,i))];
+    for(x=0;x<w;x++){
+      tmp[o+x]=sum/n;
+      sum+=arr[o+Math.min(w-1,x+r+1)]-arr[o+Math.max(0,x-r)];
+    }
+  }
+  for(x=0;x<w;x++){
+    sum=0;
+    for(i=-r;i<=r;i++) sum+=tmp[Math.min(h-1,Math.max(0,i))*w+x];
+    for(y=0;y<h;y++){
+      out[y*w+x]=sum/n;
+      sum+=tmp[Math.min(h-1,y+r+1)*w+x]-tmp[Math.max(0,y-r)*w+x];
+    }
+  }
+  return out;
+}
+
+/* gray: Uint8 array 0..255 (255 = near unless invert). Returns Float32 0..1, 1 = near */
+function normalizeDepth(gray,w,h,invert,blur){
+  var n=w*h, hist=new Uint32Array(256), i, v, c=0, lo=0, hi=255;
+  for(i=0;i<n;i++) hist[gray[i]]++;
+  for(v=0;v<256;v++){ c+=hist[v]; if(c>=n*0.01){ lo=v; break; } }
+  c=0; for(v=255;v>=0;v--){ c+=hist[v]; if(c>=n*0.01){ hi=v; break; } }
+  if(hi<=lo){ lo=0; hi=255; }
+  var z=new Float32Array(n);
+  for(i=0;i<n;i++){ var t=(gray[i]-lo)/(hi-lo); t=t<0?0:t>1?1:t; z[i]=invert?1-t:t; }
+  if(blur>0) z=boxBlur(boxBlur(z,w,h,blur),w,h,blur);
+  return z;
+}
+
+function hash2(ix,iy,seed,ch){
+  var h=Math.imul(ix,374761393)^Math.imul(iy,668265263)^Math.imul(seed+ch*1013+1,1274126177);
+  h=Math.imul(h^(h>>>13),1274126177); return ((h^(h>>>16))>>>0)/4294967296;
+}
+function valueNoise(x,y,cell,seed,ch){
+  var gx=x/cell, gy=y/cell, ix=Math.floor(gx), iy=Math.floor(gy), fx=gx-ix, fy=gy-iy;
+  var sx=fx*fx*(3-2*fx), sy=fy*fy*(3-2*fy);
+  var a=hash2(ix,iy,seed,ch), b=hash2(ix+1,iy,seed,ch), c=hash2(ix,iy+1,seed,ch), d=hash2(ix+1,iy+1,seed,ch);
+  return a+(b-a)*sx+(c-a)*sy+(a-b-c+d)*sx*sy;
+}
+
+/* ctx = createStereogramCtx(z,w,h,opts); stereogramRows(ctx,y0,y1); ctx.data is RGBA.
+   z: Float32 0..1 (1 = near). opts: strip (px, separation at the far plane), mu (depth strength 0.1..0.55),
+   pattern 'bw'|'color'|'soft', dotSize, seed, guides */
+function createStereogramCtx(z,w,h,opts){
+  var strip=opts.strip, mu=opts.mu;
+  return { z:z,w:w,h:h,strip:strip,mu:mu,E:2*strip,pattern:opts.pattern||'bw',dot:Math.max(1,opts.dotSize|0||1),
+           seed:(opts.seed|0)||1,guides:!!opts.guides,data:new Uint8ClampedArray(w*h*4),
+           same:new Int32Array(w), px:new Int32Array(w*3) , rnd:mulberry32((opts.seed|0)||1) };
+}
+function stereogramSep(ctx,zz){ var mu=ctx.mu; return Math.round((1-mu*zz)*ctx.E/(2-mu*zz)); }
+function patternColor(ctx,x,y,out){
+  var kind=ctx.pattern, d=ctx.dot, seed=ctx.seed, r=ctx.rnd;
+  if(kind==='bw'){ var v=r()<0.5?0:255; out[0]=out[1]=out[2]=v; }
+  else if(kind==='color'){ out[0]=r()*255; out[1]=r()*255; out[2]=r()*255; }
+  else { var cell=Math.max(3,Math.round(ctx.strip/7)), sp=(r()-0.5)*60;
+    out[0]=Math.max(0,Math.min(255,40+valueNoise(x,y,cell,seed,0)*215+sp));
+    out[1]=Math.max(0,Math.min(255,40+valueNoise(x,y,cell,seed,1)*215+sp));
+    out[2]=Math.max(0,Math.min(255,40+valueNoise(x,y,cell,seed,2)*215+sp)); }
+}
+function stereogramRows(ctx,y0,y1){
+  var w=ctx.w, z=ctx.z, mu=ctx.mu, E=ctx.E, same=ctx.same, data=ctx.data, col=[0,0,0], px=ctx.px, d=ctx.dot;
+  for(var y=y0;y<y1;y++){
+    var row=y*w, x;
+    for(x=0;x<w;x++) same[x]=x;
+    for(x=0;x<w;x++){
+      var zx=z[row+x], s=Math.round((1-mu*zx)*E/(2-mu*zx)), left=x-(s>>1), right=left+s;
+      if(left>=0 && right<w){
+        var t=1, visible=true;
+        for(;;){
+          var zt=zx+2*(2-mu*zx)*t/(mu*E), xl=x-t, xr=x+t;
+          if(xl<0||xr>=w) break;
+          visible = z[row+xl]<zt && z[row+xr]<zt;
+          if(!visible||zt>=1) break;
+          t++;
+        }
+        if(visible){
+          var l=same[left];
+          while(l!==left && l!==right){
+            if(l<right){ left=l; l=same[left]; }
+            else { same[left]=right; left=right; l=same[left]; right=l; }
+          }
+          same[left]=right;
+        }
+      }
+    }
+    for(x=w-1;x>=0;x--){
+      var o=(y*w+x)*4;
+      if(same[x]===x){
+        patternColor(ctx, d>1?Math.floor(x/d)*d:x, d>1?Math.floor(y/d)*d:y, col);
+        px[x*3]=col[0]; px[x*3+1]=col[1]; px[x*3+2]=col[2];
+      } else { var q=same[x]; px[x*3]=px[q*3]; px[x*3+1]=px[q*3+1]; px[x*3+2]=px[q*3+2]; }
+      data[o]=px[x*3]; data[o+1]=px[x*3+1]; data[o+2]=px[x*3+2]; data[o+3]=255;
+    }
+  }
+}
+function drawGuideDots(ctx){
+  var w=ctx.w, data=ctx.data, sepFar=ctx.strip, cx=w/2, y0=Math.round(ctx.h*0.035), r=Math.max(4,Math.round(w/260));
+  [cx-sepFar/2, cx+sepFar/2].forEach(function(px0){
+    for(var dy=-r-2;dy<=r+2;dy++) for(var dx=-r-2;dx<=r+2;dx++){
+      var dist=Math.sqrt(dx*dx+dy*dy), x=Math.round(px0+dx), y=y0+dy;
+      if(x<0||x>=w||y<0||y>=ctx.h) continue;
+      var o=(y*w+x)*4;
+      if(dist<=r){ data[o]=data[o+1]=data[o+2]=0; }
+      else if(dist<=r+2){ data[o]=data[o+1]=data[o+2]=255; }
+    }
+  });
+}
+function makeAutostereogram(z,w,h,opts){
+  var ctx=createStereogramCtx(z,w,h,opts); stereogramRows(ctx,0,h); if(ctx.guides) drawGuideDots(ctx);
+  return {data:ctx.data,w:w,h:h,ctx:ctx};
+}
+
+/* Side-by-side pair: warp the image horizontally by depth for each eye, filling holes from the farther side */
+function warpView(src,z,w,h,shiftAt){
+  var out=new Uint8ClampedArray(w*h*4), zb=new Float32Array(w), filled=new Uint8Array(w);
+  for(var y=0;y<h;y++){
+    var row=y*w, x, k;
+    zb.fill(-1); filled.fill(0);
+    for(x=0;x<w;x++){
+      var zi=z[row+x], tx=Math.round(x+shiftAt(zi));
+      if(tx<0||tx>=w||zi<=zb[tx]) continue;
+      zb[tx]=zi; filled[tx]=1;
+      var so=(row+x)*4, to=(row+tx)*4;
+      out[to]=src[so]; out[to+1]=src[so+1]; out[to+2]=src[so+2]; out[to+3]=255;
+    }
+    x=0;
+    while(x<w){
+      if(filled[x]){ x++; continue; }
+      var a=x; while(x<w && !filled[x]) x++;
+      var b=x, L=a-1, R=b<w?b:-1, sx;
+      if(L<0&&R<0) sx=-1; else if(L<0) sx=R; else if(R<0) sx=L; else sx=(zb[L]<=zb[R])?L:R;
+      for(k=a;k<b;k++){
+        var to2=(row+k)*4;
+        if(sx>=0){ var fo=(row+sx)*4; out[to2]=out[fo]; out[to2+1]=out[fo+1]; out[to2+2]=out[fo+2]; }
+        else { var so2=(row+k)*4; out[to2]=src[so2]; out[to2+1]=src[so2+1]; out[to2+2]=src[so2+2]; }
+        out[to2+3]=255;
+      }
+    }
+  }
+  return out;
+}
+/* opts: strengthPx (total disparity range), focus 0..1, order 'parallel'|'cross', gap px */
+function makeStereoPair(src,z,w,h,opts){
+  var S=opts.strengthPx, f=opts.focus, gap=opts.gap||0;
+  var left=warpView(src,z,w,h,function(zi){ return  (zi-f)*S/2; });
+  var right=warpView(src,z,w,h,function(zi){ return -(zi-f)*S/2; });
+  var first=opts.order==='cross'?right:left, second=opts.order==='cross'?left:right;
+  var W=w*2+gap, out=new Uint8ClampedArray(W*h*4);
+  for(var y=0;y<h;y++){
+    for(var x=0;x<w;x++){
+      var a=(y*w+x)*4, b=(y*W+x)*4, c=(y*W+w+gap+x)*4;
+      out[b]=first[a]; out[b+1]=first[a+1]; out[b+2]=first[a+2]; out[b+3]=255;
+      out[c]=second[a]; out[c+1]=second[a+1]; out[c+2]=second[a+2]; out[c+3]=255;
+    }
+    for(var g=0;g<gap;g++){ var o=(y*W+w+g)*4; out[o]=out[o+1]=out[o+2]=0; out[o+3]=255; }
+  }
+  return {data:out,w:W,h:h};
+}
+/*LIB_END*/
+if (typeof module !== 'undefined') { module.exports = { normalizeDepth, makeAutostereogram, stereogramSep, makeStereoPair, boxBlur, createStereogramCtx, stereogramRows }; }
+</script>
+
+<script>
+(function(){
+  if (typeof document === 'undefined' || !document.getElementById('imgFile')) return;
+  var $ = function(id){ return document.getElementById(id); };
+  var TRANSFORMERS_URLS = ['https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.3.3','https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1','https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2'];
+  var DEPTH_MODEL = 'Xenova/depth-anything-small-hf';
+
+  var state = { img:null, imgName:'image', depth:null /* {gray,w,h,source} */, seed:12345, result:null, estimator:null };
+  var srcThumb=$('srcThumb'), depthThumb=$('depthThumb'), out=$('outCanvas');
+
+  function setStatus(id,t){ $(id).textContent=t; }
+  function showProgress(p){ var box=$('progress'); box.style.display=p==null?'none':'block'; if(p!=null) $('progressBar').style.width=Math.max(0,Math.min(100,p))+'%'; }
+  function bindVal(inputId,valId,fmt){ var i=$(inputId), v=$(valId); function u(){ v.textContent=fmt?fmt(+i.value):i.value; } i.addEventListener('input',u); u(); }
+
+  bindVal('smooth','smoothVal'); bindVal('mu','muVal',function(v){ return (v/100).toFixed(2); });
+  bindVal('dotSize','dotVal'); bindVal('strip','stripVal',function(v){ return v+' px'; });
+  bindVal('shift','shiftVal',function(v){ return (v/10).toFixed(1)+'%'; });
+  bindVal('focus','focusVal',function(v){ return (v/100).toFixed(2); });
+
+  function updateMode(){
+    var m=$('mode').value;
+    $('magicControls').classList.toggle('hidden', m!=='magic');
+    $('pairControls').classList.toggle('hidden', m==='magic');
+    refreshButtons();
+  }
+  $('mode').addEventListener('change', updateMode);
+
+  function refreshButtons(){
+    var m=$('mode').value;
+    $('autoDepthBtn').disabled = !state.img;
+    $('generate').disabled = !(state.depth && (m==='magic' || state.img));
+  }
+
+  function loadImageFile(file, cb){
+    var url=URL.createObjectURL(file), im=new Image();
+    im.onload=function(){ cb(im,url); };
+    im.onerror=function(){ setStatus('depthStatus','Could not read that image.'); };
+    im.src=url;
+  }
+  function drawThumb(canvas, source, w, h){
+    var s=Math.min(1, 320/Math.max(w,h)); canvas.width=Math.max(1,Math.round(w*s)); canvas.height=Math.max(1,Math.round(h*s));
+    canvas.getContext('2d').drawImage(source,0,0,canvas.width,canvas.height);
+  }
+
+  $('imgFile').addEventListener('change', function(e){
+    var f=e.target.files[0]; if(!f) return;
+    loadImageFile(f, function(im){
+      state.img=im; state.imgName=f.name.replace(/\.[^.]+$/,'');
+      drawThumb(srcThumb, im, im.naturalWidth, im.naturalHeight);
+      setStatus('depthStatus','Image loaded ('+im.naturalWidth+' x '+im.naturalHeight+'). Now estimate depth or upload a depth map.');
+      if(state.depth && state.depth.source==='auto') state.depth=null;
+      refreshButtons();
+    });
+  });
+
+  function grayFromImage(im){
+    var c=document.createElement('canvas'); c.width=im.naturalWidth; c.height=im.naturalHeight;
+    var g=c.getContext('2d',{willReadFrequently:true}); g.drawImage(im,0,0);
+    var d=g.getImageData(0,0,c.width,c.height).data, n=c.width*c.height, gray=new Uint8Array(n);
+    for(var i=0;i<n;i++) gray[i]=Math.round(0.299*d[i*4]+0.587*d[i*4+1]+0.114*d[i*4+2]);
+    return {gray:gray,w:c.width,h:c.height};
+  }
+  function showDepthPreview(){
+    if(!state.depth) return;
+    var d=state.depth, c=document.createElement('canvas'); c.width=d.w; c.height=d.h;
+    var g=c.getContext('2d'), id=g.createImageData(d.w,d.h);
+    for(var i=0;i<d.gray.length;i++){ var v=$('invertDepth').checked?255-d.gray[i]:d.gray[i]; id.data[i*4]=id.data[i*4+1]=id.data[i*4+2]=v; id.data[i*4+3]=255; }
+    g.putImageData(id,0,0); drawThumb(depthThumb,c,d.w,d.h);
+  }
+  $('invertDepth').addEventListener('change', showDepthPreview);
+
+  $('depthFile').addEventListener('change', function(e){
+    var f=e.target.files[0]; if(!f) return;
+    loadImageFile(f, function(im){
+      var g=grayFromImage(im);
+      state.depth={gray:g.gray,w:g.w,h:g.h,source:'upload'};
+      showDepthPreview(); setStatus('depthStatus','Depth map loaded ('+g.w+' x '+g.h+'). It will be stretched to the image size.');
+      refreshButtons();
+    });
+  });
+
+  async function getEstimator(){
+    if(state.estimator) return state.estimator;
+    setStatus('depthStatus','Loading the depth model (first time can take a while)...'); showProgress(2);
+    var mod=null, lastErr=null;
+    for(var u=0;u<TRANSFORMERS_URLS.length && !mod;u++){ try{ mod=await import(TRANSFORMERS_URLS[u]); }catch(e){ lastErr=e; } }
+    if(!mod) throw (lastErr||new Error('could not load the AI library'));
+    mod.env.allowLocalModels=false;
+    var files={};
+    var cb=function(p){
+      if(p.status==='progress' && p.file){ files[p.file]={loaded:p.loaded||0,total:p.total||0};
+        var L=0,T=0; for(var k in files){ L+=files[k].loaded; T+=files[k].total; }
+        if(T>0) showProgress(5+95*L/T); }
+    };
+    var est;
+    try{ est=await mod.pipeline('depth-estimation',DEPTH_MODEL,{device:(navigator.gpu?'webgpu':'wasm'),progress_callback:cb}); }
+    catch(err){ est=await mod.pipeline('depth-estimation',DEPTH_MODEL,{progress_callback:cb}); }
+    state.estimator=est; return est;
+  }
+
+  $('autoDepthBtn').addEventListener('click', async function(){
+    if(!state.img) return;
+    $('autoDepthBtn').disabled=true;
+    try{
+      var est=await getEstimator();
+      setStatus('depthStatus','Estimating depth...'); showProgress(null);
+      var c=document.createElement('canvas'), s=Math.min(1,1024/Math.max(state.img.naturalWidth,state.img.naturalHeight));
+      c.width=Math.round(state.img.naturalWidth*s); c.height=Math.round(state.img.naturalHeight*s);
+      c.getContext('2d').drawImage(state.img,0,0,c.width,c.height);
+      var blob=await new Promise(function(r){ c.toBlob(r,'image/png'); });
+      var url=URL.createObjectURL(blob);
+      var res=await est(url); URL.revokeObjectURL(url);
+      var dm=res.depth, ch=dm.channels||1, n=dm.width*dm.height, gray=new Uint8Array(n);
+      for(var i=0;i<n;i++) gray[i]=dm.data[i*ch];
+      state.depth={gray:gray,w:dm.width,h:dm.height,source:'auto'};
+      showDepthPreview(); setStatus('depthStatus','Depth ready. If near and far look swapped in the preview, tick "Invert depth".');
+    }catch(err){
+      console.error(err); showProgress(null);
+      setStatus('depthStatus','Automatic depth failed ('+(err&&err.message?err.message:err)+'). You can still upload a depth map.');
+    }
+    showProgress(null); refreshButtons();
+  });
+
+  $('reroll').addEventListener('click', function(){ state.seed=(Math.random()*1e9)|0; if(!$('generate').disabled) generate(); });
+  $('generate').addEventListener('click', generate);
+
+  function resizeGray(d,w,h){
+    var c=document.createElement('canvas'); c.width=d.w; c.height=d.h;
+    var g=c.getContext('2d'), id=g.createImageData(d.w,d.h);
+    for(var i=0;i<d.gray.length;i++){ id.data[i*4]=id.data[i*4+1]=id.data[i*4+2]=d.gray[i]; id.data[i*4+3]=255; }
+    g.putImageData(id,0,0);
+    var c2=document.createElement('canvas'); c2.width=w; c2.height=h;
+    var g2=c2.getContext('2d',{willReadFrequently:true}); g2.imageSmoothingQuality='high'; g2.drawImage(c,0,0,w,h);
+    var px=g2.getImageData(0,0,w,h).data, gray=new Uint8Array(w*h);
+    for(var j=0;j<gray.length;j++) gray[j]=px[j*4];
+    return gray;
+  }
+
+  async function generate(){
+    var mode=$('mode').value, outW=+$('outWidth').value;
+    var aspect = state.img ? state.img.naturalHeight/state.img.naturalWidth : state.depth.h/state.depth.w;
+    var w=outW, h=Math.round(outW*aspect);
+    $('generate').disabled=true; $('download').disabled=true; setStatus('genStatus','Preparing depth...');
+    await new Promise(function(r){ setTimeout(r,20); });
+    var gray=resizeGray(state.depth,w,h);
+    var blur=Math.round(+$('smooth').value*w/1000);
+    var z=normalizeDepth(gray,w,h,$('invertDepth').checked,blur);
+    var result;
+    if(mode==='magic'){
+      var ctx=createStereogramCtx(z,w,h,{strip:Math.round(+$('strip').value*w/1600),mu:+$('mu').value/100,pattern:$('pattern').value,
+                                         dotSize:+$('dotSize').value,seed:state.seed,guides:$('guides').checked});
+      for(var y=0;y<h;y+=24){
+        stereogramRows(ctx,y,Math.min(h,y+24));
+        setStatus('genStatus','Drawing... '+Math.round(100*Math.min(h,y+24)/h)+'%');
+        await new Promise(function(r){ setTimeout(r,0); });
+      }
+      if(ctx.guides) drawGuideDots(ctx);
+      result={data:ctx.data,w:w,h:h};
+    } else {
+      var tmp=document.createElement('canvas'); tmp.width=w; tmp.height=h;
+      var g=tmp.getContext('2d',{willReadFrequently:true}); g.imageSmoothingQuality='high'; g.drawImage(state.img,0,0,w,h);
+      var src=g.getImageData(0,0,w,h).data;
+      result=makeStereoPair(src,z,w,h,{strengthPx:(+$('shift').value/1000)*w,focus:+$('focus').value/100,order:mode==='pair-cross'?'cross':'parallel',gap:Math.round(w*0.01)});
+    }
+    out.width=result.w; out.height=result.h;
+    out.getContext('2d').putImageData(new ImageData(result.data,result.w,result.h),0,0);
+    state.result={mode:mode};
+    setStatus('genStatus','Done ('+result.w+' x '+result.h+'). Save it or tweak the sliders and generate again.');
+    $('generate').disabled=false; $('download').disabled=false;
+  }
+
+  $('download').addEventListener('click', function(){
+    out.toBlob(function(b){
+      var a=document.createElement('a'); a.href=URL.createObjectURL(b);
+      a.download=state.imgName+'_'+(state.result?state.result.mode:'stereo')+'.png'; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function(){ URL.revokeObjectURL(a.href); },2000);
+    },'image/png');
+  });
+
+  updateMode();
+})();
+</script>
+</body>
+</html>
