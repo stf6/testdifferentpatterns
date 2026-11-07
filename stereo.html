@@ -367,41 +367,79 @@ if (typeof module !== 'undefined') { module.exports = { normalizeDepth, makeAuto
     });
   });
 
-  async function getEstimator(){
-    if(state.estimator) return state.estimator;
+  /* WebGPU can silently return garbage depth on some GPUs/drivers, so the CPU (wasm) backend is the default.
+     Add ?webgpu=1 to the page URL to try WebGPU; its output is sanity-checked and falls back to wasm if it looks wrong. */
+  function wantGpu(){ return /[?&]webgpu=1/.test(location.search) && !!navigator.gpu; }
+
+  async function getEstimator(device){
+    state.est = state.est || {};
+    if(state.est[device]) return state.est[device];
     setStatus('depthStatus','Loading the depth model (first time can take a while)...'); showProgress(2);
-    var mod=null, lastErr=null;
+    var mod=state.mod||null, lastErr=null;
     for(var u=0;u<TRANSFORMERS_URLS.length && !mod;u++){ try{ mod=await import(TRANSFORMERS_URLS[u]); }catch(e){ lastErr=e; } }
     if(!mod) throw (lastErr||new Error('could not load the AI library'));
-    mod.env.allowLocalModels=false;
+    state.mod=mod; mod.env.allowLocalModels=false;
     var files={};
     var cb=function(p){
       if(p.status==='progress' && p.file){ files[p.file]={loaded:p.loaded||0,total:p.total||0};
         var L=0,T=0; for(var k in files){ L+=files[k].loaded; T+=files[k].total; }
         if(T>0) showProgress(5+95*L/T); }
     };
-    var est;
-    try{ est=await mod.pipeline('depth-estimation',DEPTH_MODEL,{device:(navigator.gpu?'webgpu':'wasm'),progress_callback:cb}); }
-    catch(err){ est=await mod.pipeline('depth-estimation',DEPTH_MODEL,{progress_callback:cb}); }
-    state.estimator=est; return est;
+    var est=await mod.pipeline('depth-estimation',DEPTH_MODEL,{device:device,progress_callback:cb});
+    state.est[device]=est; return est;
+  }
+
+  /* Run the model on canvas c; returns {gray,w,h} (Uint8, 255 = near) */
+  async function runDepth(device, c){
+    var est=await getEstimator(device);
+    setStatus('depthStatus','Estimating depth ('+(device==='webgpu'?'GPU':'CPU')+')...'); showProgress(null);
+    var blob=await new Promise(function(r){ c.toBlob(r,'image/png'); });
+    var url=URL.createObjectURL(blob);
+    var res; try{ res=await est(url); } finally { URL.revokeObjectURL(url); }
+    var dm=res.depth, ch=dm.channels||1, n=dm.width*dm.height, gray=new Uint8Array(n);
+    for(var i=0;i<n;i++) gray[i]=dm.data[i*ch];
+    return {gray:gray,w:dm.width,h:dm.height};
+  }
+
+  /* A real depth map has contrast and its edges line up with edges in the photo. Garbage output does neither. */
+  function depthLooksValid(d, srcCanvas){
+    var N=96, i, j, x, y;
+    var sc=document.createElement('canvas'); sc.width=sc.height=N;
+    var sg=sc.getContext('2d',{willReadFrequently:true}); sg.drawImage(srcCanvas,0,0,N,N);
+    var px=sg.getImageData(0,0,N,N).data, L=new Float32Array(N*N), D=new Float32Array(N*N);
+    for(i=0;i<N*N;i++) L[i]=0.299*px[i*4]+0.587*px[i*4+1]+0.114*px[i*4+2];
+    for(y=0;y<N;y++) for(x=0;x<N;x++) D[y*N+x]=d.gray[Math.floor(y*d.h/N)*d.w+Math.floor(x*d.w/N)];
+    var m=0, v=0; for(i=0;i<N*N;i++) m+=D[i]; m/=N*N;
+    for(i=0;i<N*N;i++) v+=(D[i]-m)*(D[i]-m);
+    if(Math.sqrt(v/(N*N))<8) return false;                 /* flat map */
+    function grad(A){ var G=new Float32Array(N*N); for(y=1;y<N-1;y++) for(x=1;x<N-1;x++){ var gx=A[y*N+x+1]-A[y*N+x-1], gy=A[(y+1)*N+x]-A[(y-1)*N+x]; G[y*N+x]=Math.sqrt(gx*gx+gy*gy); } return G; }
+    var GL=grad(L), GD=grad(D), ml=0, md=0;
+    for(i=0;i<N*N;i++){ ml+=GL[i]; md+=GD[i]; } ml/=N*N; md/=N*N;
+    var num=0, dl=0, dd=0;
+    for(j=0;j<N*N;j++){ var a=GL[j]-ml, b=GD[j]-md; num+=a*b; dl+=a*a; dd+=b*b; }
+    var corr=num/(Math.sqrt(dl*dd)||1);
+    return corr>0.08;
   }
 
   $('autoDepthBtn').addEventListener('click', async function(){
     if(!state.img) return;
     $('autoDepthBtn').disabled=true;
     try{
-      var est=await getEstimator();
-      setStatus('depthStatus','Estimating depth...'); showProgress(null);
       var c=document.createElement('canvas'), s=Math.min(1,1024/Math.max(state.img.naturalWidth,state.img.naturalHeight));
       c.width=Math.round(state.img.naturalWidth*s); c.height=Math.round(state.img.naturalHeight*s);
       c.getContext('2d').drawImage(state.img,0,0,c.width,c.height);
-      var blob=await new Promise(function(r){ c.toBlob(r,'image/png'); });
-      var url=URL.createObjectURL(blob);
-      var res=await est(url); URL.revokeObjectURL(url);
-      var dm=res.depth, ch=dm.channels||1, n=dm.width*dm.height, gray=new Uint8Array(n);
-      for(var i=0;i<n;i++) gray[i]=dm.data[i*ch];
-      state.depth={gray:gray,w:dm.width,h:dm.height,source:'auto'};
-      showDepthPreview(); setStatus('depthStatus','Depth ready. If near and far look swapped in the preview, tick "Invert depth".');
+      var device=wantGpu()?'webgpu':'wasm', d=null, note='';
+      if(device==='webgpu'){
+        try{ d=await runDepth('webgpu',c); }catch(e){ console.warn('WebGPU depth failed',e); d=null; }
+        if(!d || !depthLooksValid(d,c)){ note=' (GPU result looked wrong, so the CPU was used)'; d=null; }
+      }
+      if(!d) d=await runDepth('wasm',c);
+      var ok=depthLooksValid(d,c);
+      state.depth={gray:d.gray,w:d.w,h:d.h,source:'auto'};
+      showDepthPreview();
+      setStatus('depthStatus', ok
+        ? 'Depth ready'+note+'. If near and far look swapped in the preview, tick "Invert depth".'
+        : 'Depth finished'+note+', but it does not seem to follow the picture. Try another image, or upload your own depth map.');
     }catch(err){
       console.error(err); showProgress(null);
       setStatus('depthStatus','Automatic depth failed ('+(err&&err.message?err.message:err)+'). You can still upload a depth map.');
