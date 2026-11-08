@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Video Watermark Remover</title>
+  <style>
+    :root { --bg:#f3f5fb; --panel:rgba(255,255,255,.86); --line:rgba(20,29,55,.10); --text:#172033; --muted:#68748b; --accent:#5b45d8; --radius:18px; }
+    * { box-sizing: border-box; }
+    body { margin:0; color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+      background: radial-gradient(circle at 8% 8%, rgba(111,91,230,.13), transparent 27%), radial-gradient(circle at 92% 12%, rgba(42,181,195,.12), transparent 25%), linear-gradient(180deg,#fafbff,#eef1f8); min-height:100vh; }
+    .page { width:min(1180px, calc(100% - 24px)); margin:16px auto 32px; display:grid; gap:14px; }
+    .panel { background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:16px; box-shadow:0 14px 40px rgba(35,42,75,.08); }
+    h1 { margin:4px 0 6px; font-size:clamp(24px,4vw,34px); letter-spacing:-.02em; }
+    h2 { margin:0 0 8px; font-size:14px; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); }
+    p, .hint { color:var(--muted); font-size:13px; line-height:1.65; margin:0; }
+    a { color:var(--accent); }
+    .layout { display:grid; grid-template-columns:minmax(300px,360px) minmax(0,1fr); gap:14px; align-items:start; }
+    @media (max-width:900px){ .layout{ grid-template-columns:1fr; } }
+    .controls { display:grid; gap:12px; }
+    .block { border:1px solid var(--line); border-radius:14px; background:#fff; padding:12px; display:grid; gap:9px; }
+    label { font-size:13px; font-weight:700; display:flex; justify-content:space-between; gap:8px; }
+    label span.val { font-weight:600; color:var(--muted); }
+    select, button, input[type=file], input[type=number] { width:100%; border-radius:12px; border:1px solid rgba(21,32,56,.14); background:#fff; color:var(--text); font:inherit; padding:11px 12px; }
+    button { font-weight:800; cursor:pointer; }
+    button.primary { background:linear-gradient(135deg,#5740cf,#765fe4); color:#fff; border-color:transparent; box-shadow:0 10px 22px rgba(91,69,216,.2); }
+    button:disabled { opacity:.45; cursor:not-allowed; }
+    input[type=range] { width:100%; }
+    .row2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .check { display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; }
+    .check input { width:auto; }
+    .status { font-size:13px; color:var(--muted); min-height:1.4em; }
+    .progress { height:6px; border-radius:3px; background:rgba(21,32,56,.08); overflow:hidden; display:none; }
+    .progress > i { display:block; height:100%; width:0; background:var(--accent); transition:width .15s; }
+    .stage { background:#111; border-radius:14px; overflow:auto; max-height:80vh; text-align:center; }
+    .stage canvas, .stage video, .stage img { max-width:100%; height:auto; display:block; margin:0 auto; }
+    .thumbs { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .thumbs figure { margin:0; } .thumbs figcaption { font-size:11px; color:var(--muted); text-align:center; margin-top:3px; }
+    .thumbs canvas { width:100%; height:auto; border-radius:10px; background:#e9ebf3; display:block; }
+    .layout > .controls:last-child { position:sticky; top:12px; align-self:start; }
+    @media (max-width:900px){ .layout > .controls:last-child { order:-1; top:0; z-index:5; } .layout > .controls:last-child .panel { padding:8px; background:#fff; } .layout > .controls:last-child .stage { max-height:38vh; } }
+    .hidden { display:none !important; }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="panel">
+    <h1>Video Watermark Remover</h1>
+    <p>Hides a small mark (a logo, a corner stamp, a text label) in a video you made, by filling the area from its surroundings, or by cropping it out. It all runs in your browser: your video never leaves your device.</p>
+    <p style="margin-top:8px"><a href="stereo.html">Depth to Magic Eye / 3D</a> &nbsp;|&nbsp; <a href="index_en.html">Back to the Tap me generator</a></p>
+  </div>
+
+  <div class="layout">
+    <div class="controls">
+      <div class="block">
+        <h2>1. Video</h2>
+        <input id="file" type="file" accept="video/*,image/gif">
+        <div class="status" id="fileStatus">Choose a video or GIF.</div>
+      </div>
+
+      <div class="block">
+        <h2>2. Mark the watermark</h2>
+        <p>Drag on the picture to draw a box around it, or start from a corner. Keep the box as tight as you can.</p>
+        <div class="row2">
+          <button type="button" data-pos="tl">Top left</button><button type="button" data-pos="tr">Top right</button>
+          <button type="button" data-pos="bl">Bottom left</button><button type="button" data-pos="br">Bottom right</button>
+        </div>
+        <div class="row2">
+          <div><label for="bx">Left <span class="val" id="bxVal"></span></label><input id="bx" type="range" min="0" max="100" step="0.5"></div>
+          <div><label for="by">Top <span class="val" id="byVal"></span></label><input id="by" type="range" min="0" max="100" step="0.5"></div>
+          <div><label for="bw">Width <span class="val" id="bwVal"></span></label><input id="bw" type="range" min="1" max="60" step="0.5"></div>
+          <div><label for="bh">Height <span class="val" id="bhVal"></span></label><input id="bh" type="range" min="1" max="60" step="0.5"></div>
+        </div>
+        <label for="pt">Preview at <span class="val" id="ptVal">0.0 s</span></label>
+        <input id="pt" type="range" min="0" max="10" step="0.1" value="0">
+        <label class="check"><input id="showResult" type="checkbox"> Show the result in the preview</label>
+      </div>
+
+      <div class="block">
+        <h2>3. How to remove it</h2>
+        <label for="method">Method</label>
+        <select id="method">
+          <option value="fill">Fill it in (keeps the whole frame)</option>
+          <option value="crop">Crop it out (smaller frame)</option>
+          <option value="zoom">Crop and zoom (full size, softer)</option>
+        </select>
+        <div id="fillOpts" class="block" style="padding:10px;border-style:dashed">
+          <label for="grow">Grow the box by <span class="val" id="growVal">2 px</span></label>
+          <input id="grow" type="range" min="0" max="12" value="2">
+          <label for="smooth">Steadiness over time <span class="val" id="smoothVal">30%</span></label>
+          <input id="smooth" type="range" min="0" max="80" value="30">
+          <label for="grain">Match the video's grain <span class="val" id="grainVal">80%</span></label>
+          <input id="grain" type="range" min="0" max="150" value="80">
+          <label class="check"><input id="auto" type="checkbox"> Tighten to the mark's shape</label>
+          <p class="hint">Only fills the pixels that stay still while the video moves behind them, so less of the picture is touched. Works on moving footage only, and can leave faint traces on soft glows. If you see traces, switch it off.</p>
+        </div>
+      </div>
+
+      <div class="block">
+        <h2>4. Output</h2>
+        <div class="row2">
+          <div><label for="maxW">Largest width</label><select id="maxW"><option value="0">Original</option><option>1920</option><option>1280</option><option>854</option><option>640</option><option>480</option></select></div>
+          <div><label for="fps">Frames per second</label><select id="fps"><option value="0" id="fpsAuto">Same as video</option><option>12</option><option>15</option><option>24</option><option>25</option><option>30</option><option>60</option></select></div>
+          <div><label for="start">Start at (s)</label><input id="start" type="number" min="0" step="0.5" value="0"></div>
+          <div><label for="len">Length <span class="val" id="lenVal">10 s</span></label><input id="len" type="range" min="1" max="15" value="10"></div>
+        </div>
+        <label for="fmt">Save as</label>
+        <select id="fmt"><option value="mp4">MP4 video</option><option value="gif">GIF</option><option value="both">MP4 and GIF</option></select>
+        <label class="check"><input id="keepAudio" type="checkbox" checked> Keep the sound (MP4 and MOV files with AAC audio)</label>
+        <div class="progress" id="progress"><i id="progressBar"></i></div>
+        <button id="go" class="primary" disabled>Remove watermark</button>
+        <button id="cancel" class="hidden" type="button">Cancel</button>
+        <button id="saveVideo" disabled>Save video (MP4)</button>
+        <button id="saveGif" disabled>Save GIF</button>
+        <div class="status" id="status"></div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="panel">
+        <div class="stage"><canvas id="preview" width="640" height="360" style="touch-action:none;cursor:crosshair"></canvas><canvas id="outCanvas" class="hidden" width="10" height="10"></canvas><video id="outVideo" class="hidden" controls loop muted playsinline></video><img id="outGif" class="hidden" alt="GIF result"></div>
+        <div class="status" id="wmStatus" style="margin-top:8px"></div>
+      </div>
+    </div>
+  </div>
+  <div class="panel">
+    <h2>Good to know</h2>
+    <p><b>Fill</b> works best on small marks over smooth or moving backgrounds. It cannot bring back what was hidden: on a large mark over fine detail you will see a soft patch. <b>Crop</b> is exact, so use it when the mark sits near an edge. It is the safest choice for big marks.</p>
+    <p style="margin-top:8px">Only use this on videos you made or have the right to edit. It hides the visible mark only. It does not touch invisible watermarks (such as SynthID) that some AI tools embed, and it is not meant to hide that a video is AI-generated, so say so where that matters.</p>
+    <p style="margin-top:8px">Speed: the fill itself takes about a millisecond per frame. Most of the time goes on reading and re-encoding the video. Keep the tab open until it finishes. Needs Chrome, Edge or Brave to save MP4 video.</p>
+  </div>
+</div>
+
+<script src="media.js"></script>
+<script>
+/* ---------------- watermark removal core (pure functions, no DOM) ---------------- */
+
+/* Fills the pixels where mask[i]==1 from the pixels around them.
+   px: RGBA Uint8ClampedArray of a small region (modified in place), mask: Uint8Array (1 = unknown), rw/rh: region size.
+   Steps: push-pull pyramid (smooth first guess), diffusion (continuous edges), then optional grain matched to the surroundings.
+   o: {iters:30, grain:0.8 (0..1.5), grainMax:10, rand:fn, state:{} (keeps the previous fill, for temporal smoothing), smooth:0..0.9} */
+function fillRegion(px,mask,rw,rh,o){
+  o=o||{};
+  var n=rw*rh, c, i, x, y, dx, dy, j, l;
+  var base={w:rw,h:rh,wt:new Float32Array(n),col:[new Float32Array(n),new Float32Array(n),new Float32Array(n)]}, known=0, mean=[0,0,0], idxs=[];
+  for(i=0;i<n;i++){
+    if(!mask[i]){ base.wt[i]=1; known++; for(c=0;c<3;c++){ base.col[c][i]=px[i*4+c]; mean[c]+=px[i*4+c]; } }
+    else idxs.push(i);
+  }
+  if(!known||!idxs.length) return false;
+  for(c=0;c<3;c++) mean[c]/=known;
+  var lv=[base], cur=base;
+  while(cur.w>2 && cur.h>2 && lv.length<10){
+    var nw=(cur.w+1)>>1, nh=(cur.h+1)>>1, nx={w:nw,h:nh,wt:new Float32Array(nw*nh),col:[new Float32Array(nw*nh),new Float32Array(nw*nh),new Float32Array(nw*nh)]};
+    for(y=0;y<nh;y++) for(x=0;x<nw;x++){
+      var sw=0, s0=0, s1=0, s2=0;
+      for(dy=0;dy<2;dy++) for(dx=0;dx<2;dx++){
+        var xx=2*x+dx, yy=2*y+dy; if(xx>=cur.w||yy>=cur.h) continue;
+        j=yy*cur.w+xx; var w=cur.wt[j];
+        if(w>0){ sw+=w; s0+=w*cur.col[0][j]; s1+=w*cur.col[1][j]; s2+=w*cur.col[2][j]; }
+      }
+      var k=y*nw+x; if(sw>0){ nx.col[0][k]=s0/sw; nx.col[1][k]=s1/sw; nx.col[2][k]=s2/sw; nx.wt[k]=Math.min(1,sw); }
+    }
+    lv.push(nx); cur=nx;
+  }
+  var top=lv[lv.length-1];
+  for(i=0;i<top.w*top.h;i++) if(top.wt[i]<=0){ for(c=0;c<3;c++) top.col[c][i]=mean[c]; top.wt[i]=1; }
+  for(l=lv.length-2;l>=0;l--){
+    var f=lv[l], cs=lv[l+1];
+    for(y=0;y<f.h;y++) for(x=0;x<f.w;x++){
+      i=y*f.w+x; var w0=f.wt[i]; if(w0>=1) continue;
+      var u=(x+0.5)/2-0.5, v=(y+0.5)/2-0.5, x0=Math.floor(u), y0=Math.floor(v), fx=u-x0, fy=v-y0;
+      var xa=Math.max(0,Math.min(cs.w-1,x0)), xb=Math.max(0,Math.min(cs.w-1,x0+1)), ya=Math.max(0,Math.min(cs.h-1,y0)), yb=Math.max(0,Math.min(cs.h-1,y0+1));
+      for(c=0;c<3;c++){
+        var a=cs.col[c], up=(a[ya*cs.w+xa]*(1-fx)+a[ya*cs.w+xb]*fx)*(1-fy)+(a[yb*cs.w+xa]*(1-fx)+a[yb*cs.w+xb]*fx)*fy;
+        f.col[c][i]=f.col[c][i]*w0+up*(1-w0);
+      }
+      f.wt[i]=1;
+    }
+  }
+  var C=base.col, iters=o.iters==null?30:o.iters, it, m, L, R, U, D;
+  for(it=0;it<iters;it++) for(m=0;m<idxs.length;m++){
+    i=idxs[m]; x=i%rw; y=(i/rw)|0;
+    L=x>0?i-1:i; R=x<rw-1?i+1:i; U=y>0?i-rw:i; D=y<rh-1?i+rw:i;
+    for(c=0;c<3;c++) C[c][i]=0.25*(C[c][L]+C[c][R]+C[c][U]+C[c][D]);
+  }
+  /* temporal smoothing of the smooth fill (a static mark gives a static hole; this stops its edges from twitching) */
+  var st=o.state, sm=o.smooth||0;
+  if(st){
+    var cnt=idxs.length;
+    if(st.prev && st.prev.length===cnt*3 && sm>0){
+      var dsum=0; for(m=0;m<cnt;m++) for(c=0;c<3;c++) dsum+=Math.abs(C[c][idxs[m]]-st.prev[m*3+c]);
+      if(dsum/(cnt*3)<25) for(m=0;m<cnt;m++) for(c=0;c<3;c++) C[c][idxs[m]]=st.prev[m*3+c]*sm+C[c][idxs[m]]*(1-sm);
+    }
+    if(!st.prev||st.prev.length!==cnt*3) st.prev=new Float32Array(cnt*3);
+    for(m=0;m<cnt;m++) for(c=0;c<3;c++) st.prev[m*3+c]=C[c][idxs[m]];
+  }
+  /* grain: match the noise level of the pixels around the hole */
+  var gain=o.grain==null?0.8:o.grain, amp=0;
+  if(gain>0){
+    var ss=0, sc=0;
+    for(y=1;y<rh-1;y++) for(x=1;x<rw-1;x++){
+      i=y*rw+x; var ok=!mask[i]&&!mask[i-1]&&!mask[i+1]&&!mask[i-rw]&&!mask[i+rw]&&!mask[i-rw-1]&&!mask[i-rw+1]&&!mask[i+rw-1]&&!mask[i+rw+1];
+      if(!ok) continue;
+      var lum=function(q){ return 0.299*px[q*4]+0.587*px[q*4+1]+0.114*px[q*4+2]; };
+      var hp=lum(i)-(lum(i-1)+lum(i+1)+lum(i-rw)+lum(i+rw))/4; ss+=hp*hp; sc++;
+    }
+    if(sc>20) amp=Math.min(o.grainMax==null?10:o.grainMax,Math.sqrt(ss/sc)*0.85)*gain;
+  }
+  var rnd=o.rand||Math.random;
+  for(m=0;m<idxs.length;m++){
+    i=idxs[m]; var g=0; if(amp>0) g=((rnd()+rnd())-1)*1.2247*amp;
+    for(c=0;c<3;c++){ var val=Math.round(C[c][i]+g+(amp>0?((rnd()-0.5)*0.5*amp):0)); px[i*4+c]=val<0?0:val>255?255:val; }
+    px[i*4+3]=255;
+  }
+  return true;
+}
+
+/* Grows a mask by r pixels (square). Returns a new Uint8Array. */
+function dilateMask(mask,rw,rh,r){
+  if(r<=0) return Uint8Array.from(mask);
+  var tmp=new Uint8Array(rw*rh), out=new Uint8Array(rw*rh), x, y, k;
+  for(y=0;y<rh;y++) for(x=0;x<rw;x++){ var hit=0; for(k=-r;k<=r&&!hit;k++){ var xx=x+k; if(xx>=0&&xx<rw&&mask[y*rw+xx]) hit=1; } tmp[y*rw+x]=hit; }
+  for(y=0;y<rh;y++) for(x=0;x<rw;x++){ var h2=0; for(k=-r;k<=r&&!h2;k++){ var yy=y+k; if(yy>=0&&yy<rh&&tmp[yy*rw+x]) h2=1; } out[y*rw+x]=h2; }
+  return out;
+}
+
+/* Finds which pixels inside the box are the mark, from how little they change over time: a still overlay stays put while
+   the footage underneath moves. lumas: array of Float32Array(rw*rh) from frames spread over the clip. box: {x,y,w,h} in
+   region pixels. Returns {mask, auto:true|false, coverage, note}. When the footage barely moves nothing can be told apart,
+   so the whole box is used. */
+function temporalMask(lumas,rw,rh,box,o){
+  o=o||{};
+  var K=lumas.length, n=rw*rh, i, x, y, k, full=new Uint8Array(n);
+  for(y=box.y;y<box.y+box.h;y++) for(x=box.x;x<box.x+box.w;x++) if(x>=0&&x<rw&&y>=0&&y<rh) full[y*rw+x]=1;
+  if(K<6) return {mask:full,auto:false,coverage:1,note:'too few frames to tell'};
+  var sd=new Float32Array(n);
+  for(i=0;i<n;i++){ var m=0, v=0; for(k=0;k<K;k++) m+=lumas[k][i]; m/=K; for(k=0;k<K;k++){ var d=lumas[k][i]-m; v+=d*d; } sd[i]=Math.sqrt(v/(K-1)); }
+  var sm=new Float32Array(n);
+  for(y=0;y<rh;y++) for(x=0;x<rw;x++){ var s=0,c=0; for(var dy=-1;dy<=1;dy++) for(var dx=-1;dx<=1;dx++){ var xx=x+dx, yy=y+dy; if(xx>=0&&xx<rw&&yy>=0&&yy<rh){ s+=sd[yy*rw+xx]; c++; } } sm[y*rw+x]=s/c; }
+  var ring=[], pad=2;
+  for(y=0;y<rh;y++) for(x=0;x<rw;x++) if(x<box.x-pad||x>=box.x+box.w+pad||y<box.y-pad||y>=box.y+box.h+pad) ring.push(sm[y*rw+x]);
+  if(ring.length<30) return {mask:full,auto:false,coverage:1,note:'no surroundings to compare with'};
+  ring.sort(function(a,b){ return a-b; });
+  var med=ring[ring.length>>1];
+  if(med<(o.minMotion==null?10:o.minMotion)) return {mask:full,auto:false,coverage:1,note:'the footage does not move enough to tell the mark apart, so the whole box is used'};
+  var thr=med*(o.ratio==null?0.8:o.ratio), mask=new Uint8Array(n), cnt=0, tot=0;
+  for(y=box.y;y<box.y+box.h;y++) for(x=box.x;x<box.x+box.w;x++){ if(x<0||x>=rw||y<0||y>=rh) continue; tot++; i=y*rw+x; if(sm[i]<thr){ mask[i]=1; cnt++; } }
+  if(cnt<Math.max(6,tot*0.01)) return {mask:full,auto:false,coverage:1,note:'no still overlay found in the box, so the whole box is used'};
+  return {mask:mask,auto:true,coverage:cnt/tot,note:'found the mark: '+Math.round(100*cnt/tot)+'% of the box'};
+}
+
+if (typeof module !== 'undefined') { module.exports = { fillRegion, dilateMask, temporalMask }; }
+</script>
+<script>
+(function(){
+  'use strict';
+  var $=function(id){ return document.getElementById(id); };
+  var state={vid:null,info:null,box:{x:0.80,y:0.88,w:0.18,h:0.10},previewT:0,maskCache:{},seq:0,cancel:false,running:false,
+             videoUrl:null,gifUrl:null,videoBlob:null,gifBlob:null,base:null};
+  var pv=$('preview'), pg=pv.getContext('2d',{willReadFrequently:true}), out=$('outCanvas'), PREVIEW_W=960;
+
+  function setStatus(id,t){ $(id).textContent=t; }
+  function showProgress(p){ var b=$('progress'); b.style.display=p==null?'none':'block'; if(p!=null) $('progressBar').style.width=Math.max(0,Math.min(100,p))+'%'; }
+  function bindVal(id,vid,fmt){ var el=$(id), lab=$(vid); function u(){ lab.textContent=fmt?fmt(el.value):el.value; } el.addEventListener('input',u); u(); }
+  function rng(seed){ var s=(seed>>>0)||1; return function(){ s=(Math.imul(s,1664525)+1013904223)>>>0; return s/4294967296; }; }
+
+  /* ---------- box ---------- */
+  function syncBoxUI(){
+    var b=state.box;
+    $('bx').value=(b.x*100).toFixed(1); $('by').value=(b.y*100).toFixed(1); $('bw').value=(b.w*100).toFixed(1); $('bh').value=(b.h*100).toFixed(1);
+    $('bxVal').textContent=(b.x*100).toFixed(1)+'%'; $('byVal').textContent=(b.y*100).toFixed(1)+'%'; $('bwVal').textContent=(b.w*100).toFixed(1)+'%'; $('bhVal').textContent=(b.h*100).toFixed(1)+'%';
+  }
+  function readBoxUI(){
+    var b=state.box; b.x=+$('bx').value/100; b.y=+$('by').value/100; b.w=+$('bw').value/100; b.h=+$('bh').value/100;
+    b.w=Math.min(b.w,1-b.x); b.h=Math.min(b.h,1-b.y); syncBoxUI();
+  }
+  function geom(w,h){
+    var b=state.box, bx=Math.max(0,Math.min(w-2,Math.round(b.x*w))), by=Math.max(0,Math.min(h-2,Math.round(b.y*h)));
+    var bw=Math.max(2,Math.min(w-bx,Math.round(b.w*w))), bh=Math.max(2,Math.min(h-by,Math.round(b.h*h)));
+    var m=Math.max(6,Math.round(0.6*Math.min(bw,bh))), rx=Math.max(0,bx-m), ry=Math.max(0,by-m), rx2=Math.min(w,bx+bw+m), ry2=Math.min(h,by+bh+m);
+    return {bx:bx,by:by,bw:bw,bh:bh,rx:rx,ry:ry,rw:rx2-rx,rh:ry2-ry};
+  }
+
+  /* ---------- crop geometry (fractions of the source frame) ---------- */
+  function cropFraction(){
+    var b=state.box, c=[{x:0,y:0,w:1,h:b.y},{x:0,y:b.y+b.h,w:1,h:1-b.y-b.h},{x:b.x+b.w,y:0,w:1-b.x-b.w,h:1},{x:0,y:0,w:b.x,h:1}], best=null, i;
+    for(i=0;i<c.length;i++) if(c[i].w>0.02&&c[i].h>0.02&&(!best||c[i].w*c[i].h>best.w*best.h)) best=c[i];
+    return best;
+  }
+  /* method -> {w,h (output), rect (source pixels) or null} */
+  function outDims(){
+    var v=state.vid, method=$('method').value, maxW=+$('maxW').value, rect=null, bw=v.w, bh=v.h, f;
+    if(method!=='fill'){
+      f=cropFraction(); if(!f) throw new Error('The box covers too much of the frame to crop. Make it smaller.');
+      var rw=f.w*v.w, rh=f.h*v.h;
+      if(method==='zoom'){
+        var asp=v.w/v.h, zw=Math.min(rw,rh*asp), zh=zw/asp;
+        rect={x:f.x*v.w+(rw-zw)/2,y:f.y*v.h+(rh-zh)/2,w:zw,h:zh};
+      } else rect={x:f.x*v.w,y:f.y*v.h,w:rw,h:rh};
+      if(method==='crop'){ bw=rect.w; bh=rect.h; }
+    }
+    var sc=maxW>0?Math.min(1,maxW/bw):1;
+    return {w:Math.max(2,Math.round(bw*sc)&~1),h:Math.max(2,Math.round(bh*sc)&~1),rect:rect};
+  }
+
+  /* ---------- the mask (which pixels to fill), in region coordinates ---------- */
+  async function getMask(w,h,t0,len){
+    var g=geom(w,h), b=state.box, auto=$('auto').checked, grow=+$('grow').value, vid=state.vid;
+    var key=[w,h,g.bx,g.by,g.bw,g.bh,auto?1:0,grow,auto?t0.toFixed(2):'',auto?len.toFixed(2):''].join('|');
+    if(state.maskCache[key]) return state.maskCache[key];
+    var rbox={x:g.bx-g.rx,y:g.by-g.ry,w:g.bw,h:g.bh}, res;
+    if(auto){
+      var K=20, lumas=[], tc=document.createElement('canvas'); tc.width=w; tc.height=h; var tg=tc.getContext('2d',{willReadFrequently:true});
+      for(var k=0;k<K;k++){
+        await drawVideoFrame(vid,Math.min(vid.duration-0.05,t0+len*(k+0.5)/K),tg,w,h);
+        var d=tg.getImageData(g.rx,g.ry,g.rw,g.rh).data, l=new Float32Array(g.rw*g.rh);
+        for(var i=0;i<l.length;i++) l[i]=0.299*d[i*4]+0.587*d[i*4+1]+0.114*d[i*4+2];
+        lumas.push(l);
+      }
+      res=temporalMask(lumas,g.rw,g.rh,rbox);
+    } else {
+      var full=new Uint8Array(g.rw*g.rh);
+      for(var y=rbox.y;y<rbox.y+rbox.h;y++) for(var x=rbox.x;x<rbox.x+rbox.w;x++) full[y*g.rw+x]=1;
+      res={mask:full,auto:false,coverage:1,note:''};
+    }
+    res={mask:dilateMask(res.mask,g.rw,g.rh,grow),auto:res.auto,coverage:res.coverage,note:res.note,g:g};
+    state.maskCache={}; state.maskCache[key]=res;
+    return res;
+  }
+
+  /* ---------- preview ---------- */
+  function previewDims(){ var v=state.vid, w=Math.min(PREVIEW_W,v.w)&~1; return {w:w,h:Math.round(w*v.h/v.w)&~1}; }
+  function overlay(maskRes){
+    if(!state.base) return;
+    pg.putImageData(state.base,0,0);
+    var w=pv.width, h=pv.height, g=geom(w,h);
+    if($('method').value==='fill'){
+      if(maskRes && maskRes.g && maskRes.g.rw===g.rw && !$('showResult').checked){
+        var im=pg.getImageData(g.rx,g.ry,g.rw,g.rh), d=im.data;
+        for(var i=0;i<maskRes.mask.length;i++) if(maskRes.mask[i]){ d[i*4]=d[i*4]*0.5+127; d[i*4+1]*=0.5; d[i*4+2]*=0.5; }
+        pg.putImageData(im,g.rx,g.ry);
+      }
+      pg.save(); pg.lineWidth=2; pg.strokeStyle='#ffd400'; pg.setLineDash([6,4]); pg.strokeRect(g.bx+0.5,g.by+0.5,g.bw,g.bh); pg.restore();
+    } else {
+      var f=cropFraction(); if(!f) return;
+      pg.save(); pg.fillStyle='rgba(0,0,0,.55)';
+      pg.beginPath(); pg.rect(0,0,w,h); pg.rect(f.x*w,f.y*h,f.w*w,f.h*h); pg.fill('evenodd');
+      pg.lineWidth=2; pg.strokeStyle='#ffd400'; pg.strokeRect(g.bx+0.5,g.by+0.5,g.bw,g.bh); pg.restore();
+    }
+  }
+  var previewTimer=null;
+  function schedulePreview(ms){ clearTimeout(previewTimer); previewTimer=setTimeout(drawPreview,ms==null?120:ms); }
+  async function drawPreview(){
+    if(!state.vid||state.running) return;
+    var my=++state.seq, vid=state.vid, d=previewDims();
+    try{
+      var tc=document.createElement('canvas'); tc.width=d.w; tc.height=d.h; var tg=tc.getContext('2d',{willReadFrequently:true});
+      await drawVideoFrame(vid,state.previewT,tg,d.w,d.h);
+      if(my!==state.seq) return;
+      var method=$('method').value, shown=tg.getImageData(0,0,d.w,d.h), maskRes=null;
+      if(method!=='fill' && $('showResult').checked){
+        var od=outDims(), sc=d.w/ (od.rect&&method==='crop'?od.rect.w:vid.w);
+        var cw=Math.max(2,Math.round((method==='crop'?od.rect.w:vid.w)*sc)), ch=Math.max(2,Math.round((method==='crop'?od.rect.h:vid.h)*sc));
+        var cc=document.createElement('canvas'); cc.width=cw; cc.height=ch; var cg=cc.getContext('2d',{willReadFrequently:true});
+        await drawVideoFrame(vid,state.previewT,cg,cw,ch,od.rect);
+        if(my!==state.seq) return;
+        pv.width=cw; pv.height=ch; shown=cg.getImageData(0,0,cw,ch); state.base=shown; pg.putImageData(shown,0,0); setStatus('wmStatus','Cropped result. The frame is '+od.w+' x '+od.h+'.'); return;
+      }
+      pv.width=d.w; pv.height=d.h; state.base=shown; pg.putImageData(shown,0,0);
+      if(method==='fill'){
+        var g=geom(d.w,d.h);
+        if($('showResult').checked || $('auto').checked){
+          setStatus('wmStatus',$('auto').checked?'Looking for the mark...':'Filling...');
+          maskRes=await getMask(d.w,d.h,Math.max(0,+$('start').value||0),Math.min(+$('len').value,Math.max(0.5,vid.duration-(+$('start').value||0))));
+          if(my!==state.seq) return;
+        }
+        if($('showResult').checked && maskRes){
+          var im=pg.getImageData(g.rx,g.ry,g.rw,g.rh);
+          fillRegion(im.data,maskRes.mask,g.rw,g.rh,{grain:+$('grain').value/100,rand:rng(7)});
+          pg.putImageData(im,g.rx,g.ry); state.base=pg.getImageData(0,0,d.w,d.h);
+        }
+        setStatus('wmStatus',maskRes&&maskRes.note?maskRes.note:(maskRes?'':'Drag on the picture to draw a box around the watermark.'));
+      } else setStatus('wmStatus','The dimmed strip is cut away. The frame gets smaller.');
+      overlay(maskRes);
+    }catch(err){ console.error(err); setStatus('wmStatus','Could not draw the preview: '+(err&&err.message?err.message:err)); }
+  }
+
+  /* drag a box on the preview */
+  var drag=null;
+  function pos(e){ var r=pv.getBoundingClientRect(); return {x:Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)),y:Math.max(0,Math.min(1,(e.clientY-r.top)/r.height))}; }
+  pv.addEventListener('pointerdown',function(e){ if(!state.vid||state.running) return; drag=pos(e); pv.setPointerCapture(e.pointerId); e.preventDefault(); });
+  pv.addEventListener('pointermove',function(e){
+    if(!drag) return; var p=pos(e), b=state.box;
+    b.x=Math.min(drag.x,p.x); b.y=Math.min(drag.y,p.y); b.w=Math.max(0.01,Math.abs(p.x-drag.x)); b.h=Math.max(0.01,Math.abs(p.y-drag.y));
+    syncBoxUI(); overlay(null);
+  });
+  function endDrag(){ if(!drag) return; drag=null; schedulePreview(60); }
+  pv.addEventListener('pointerup',endDrag); pv.addEventListener('pointercancel',endDrag);
+
+  ['bx','by','bw','bh'].forEach(function(id){ $(id).addEventListener('input',function(){ readBoxUI(); if(state.base) overlay(null); schedulePreview(250); }); });
+  Array.prototype.forEach.call(document.querySelectorAll('button[data-pos]'),function(btn){
+    btn.addEventListener('click',function(){
+      var b=state.box, p=btn.getAttribute('data-pos'); b.w=0.18; b.h=0.10;
+      b.x=p.charAt(1)==='l'?0.02:1-0.02-b.w; b.y=p.charAt(0)==='t'?0.03:1-0.03-b.h; syncBoxUI(); schedulePreview(0);
+    });
+  });
+  $('pt').addEventListener('input',function(){ state.previewT=+$('pt').value; $('ptVal').textContent=state.previewT.toFixed(1)+' s'; schedulePreview(150); });
+  ['showResult','auto','method','grow','grain','maxW'].forEach(function(id){ $(id).addEventListener('change',function(){ $('fillOpts').classList.toggle('hidden',$('method').value!=='fill'); schedulePreview(0); }); });
+  bindVal('grow','growVal',function(v){ return v+' px'; }); bindVal('smooth','smoothVal',function(v){ return v+'%'; }); bindVal('grain','grainVal',function(v){ return v+'%'; });
+  bindVal('len','lenVal',function(v){ return v+' s'; });
+  ['grow','grain'].forEach(function(id){ $(id).addEventListener('input',function(){ schedulePreview(300); }); });
+
+  /* ---------- loading ---------- */
+  function clearResult(){
+    if(state.videoUrl){ URL.revokeObjectURL(state.videoUrl); state.videoUrl=null; }
+    if(state.gifUrl){ URL.revokeObjectURL(state.gifUrl); state.gifUrl=null; }
+    state.videoBlob=null; state.gifBlob=null;
+    var v=$('outVideo'); v.pause(); v.removeAttribute('src'); v.load(); v.classList.add('hidden');
+    var gi=$('outGif'); gi.removeAttribute('src'); gi.classList.add('hidden'); out.classList.add('hidden'); pv.classList.remove('hidden');
+    $('saveVideo').disabled=true; $('saveGif').disabled=true;
+  }
+  $('file').addEventListener('change',async function(e){
+    var f=e.target.files[0];
+    clearResult(); if(state.vid&&state.vid.url) URL.revokeObjectURL(state.vid.url);
+    state.vid=null; state.info=null; state.maskCache={}; $('go').disabled=true; if(!f) return;
+    try{
+      setStatus('fileStatus','Reading the file...');
+      var vid=await loadVideoSource(f), info=null;
+      if(vid.kind==='video'){ try{ info=await probeMp4(f); }catch(err){ console.warn('probe failed',err); } }
+      state.vid=vid; state.info=info;
+      var fps=info&&info.fps?Math.round(info.fps*1000)/1000:null;
+      $('fpsAuto').textContent=fps?'Same as video ('+fps+')':'Same as video (24)';
+      var dur=vid.duration, maxLen=Math.max(1,Math.min(120,Math.ceil(dur)));
+      $('len').max=maxLen; $('len').value=Math.min(maxLen,Math.max(1,Math.ceil(Math.min(dur,15)))); $('len').dispatchEvent(new Event('input'));
+      $('pt').max=Math.max(0.1,dur-0.1).toFixed(1); $('pt').value=Math.min(dur/3,dur-0.1).toFixed(1); state.previewT=+$('pt').value; $('ptVal').textContent=state.previewT.toFixed(1)+' s';
+      $('start').value=0;
+      var au=vid.kind==='gif'?'GIFs have no sound':(info?(info.audio?'AAC audio found, it can be kept':'sound will be dropped ('+info.audioNote+')'):'sound will be dropped (not an MP4 or MOV file)');
+      setStatus('fileStatus',vid.w+' x '+vid.h+', '+dur.toFixed(1)+' s'+(fps?', '+fps+' fps':'')+'. '+au+'.');
+      $('go').disabled=false; setStatus('status','Mark the watermark, then press Remove watermark.');
+      syncBoxUI(); drawPreview();
+    }catch(err){ console.error(err); state.vid=null; setStatus('fileStatus',err&&err.message?err.message:'Could not read that file.'); }
+  });
+
+  /* ---------- run ---------- */
+  async function run(){
+    var vid=state.vid; if(!vid) return;
+    clearResult(); state.cancel=false; state.running=true; state.seq++;
+    var method=$('method').value, start=Math.max(0,+$('start').value||0), len=+$('len').value;
+    var fps=+$('fps').value; if(!fps){ fps=state.info&&state.info.fps?Math.round(state.info.fps*1000)/1000:24; }
+    var avail=vid.duration-start;
+    if(avail<=0){ setStatus('status','The start time is past the end of the clip.'); state.running=false; return; }
+    len=Math.min(len,avail); var N=Math.max(1,Math.floor(len*fps));
+    $('go').disabled=true; $('cancel').classList.remove('hidden'); showProgress(0);
+    var fmt=$('fmt').value, wantMp4=fmt!=='gif', wantGif=fmt!=='mp4', mp4sink=null, gifsink=null;
+    try{
+      var d=outDims(), w=d.w, h=d.h, g=geom(w,h), fillState={}, smooth=+$('smooth').value/100, grain=+$('grain').value/100, rand=rng(99);
+      out.width=w; out.height=h; out.classList.remove('hidden'); pv.classList.add('hidden');
+      var og=out.getContext('2d',{willReadFrequently:true});
+      if(wantMp4){ mp4sink=await createMp4Sink(out,w,h,fps); if(!mp4sink) throw new Error('this browser cannot encode MP4 video (use Chrome, Edge or Brave), or choose GIF'); }
+      if(wantGif) gifsink=createGifSink(w,h,fps);
+      var maskRes=null;
+      if(method==='fill'){ setStatus('status',$('auto').checked?'Looking for the mark...':'Preparing...'); maskRes=await getMask(w,h,start,len); if(maskRes.note) setStatus('wmStatus',maskRes.note); }
+      for(var k=0;k<N;k++){
+        if(state.cancel) throw new Error('cancelled');
+        setStatus('status','Frame '+(k+1)+' of '+N);
+        showProgress(96*k/N);
+        await drawVideoFrame(vid,start+(k+0.25)/fps,og,w,h,d.rect);
+        if(method==='fill'){
+          var im=og.getImageData(g.rx,g.ry,g.rw,g.rh);
+          fillRegion(im.data,maskRes.mask,g.rw,g.rh,{state:fillState,smooth:smooth,grain:grain,rand:rand});
+          og.putImageData(im,g.rx,g.ry);
+        }
+        if(mp4sink) await mp4sink.add(k);
+        if(gifsink) await gifsink.add(k,og.getImageData(0,0,w,h).data);
+        await sleep(0);
+      }
+      showProgress(98); setStatus('status','Finishing the file...');
+      var audio=null, audioNote='';
+      if(mp4sink && $('keepAudio').checked){
+        if(state.info&&state.info.audio) audio=await readMp4Audio(vid.file,state.info,start,N/fps);
+        else audioNote=' No sound was kept ('+(state.info?state.info.audioNote:'not an MP4 or MOV file')+').';
+      }
+      var mp4Blob=mp4sink?await mp4sink.finish(audio):null, gifBlob=gifsink?await gifsink.finish():null, info=[];
+      if(mp4Blob){ state.videoBlob=mp4Blob; state.videoUrl=URL.createObjectURL(mp4Blob); $('saveVideo').disabled=false; info.push('MP4 '+(mp4Blob.size/1e6).toFixed(1)+' MB'+(audio?' with sound':'')); }
+      if(gifBlob){ state.gifBlob=gifBlob; state.gifUrl=URL.createObjectURL(gifBlob); $('saveGif').disabled=false; info.push('GIF '+(gifBlob.size/1e6).toFixed(1)+' MB'); }
+      out.classList.add('hidden');
+      if(mp4Blob){ var ov=$('outVideo'); ov.src=state.videoUrl; ov.muted=!audio; ov.classList.remove('hidden'); ov.play().catch(function(){}); }
+      else { var gi=$('outGif'); gi.src=state.gifUrl; gi.classList.remove('hidden'); }
+      setStatus('status','Done: '+N+' frames, '+(N/fps).toFixed(1)+' s ('+info.join(', ')+'). Use the Save buttons below.'+audioNote);
+    }catch(err){
+      pv.classList.remove('hidden'); out.classList.add('hidden');
+      if(err&&err.message==='cancelled') setStatus('status','Cancelled.');
+      else { console.error(err); setStatus('status','Failed: '+(err&&err.message?err.message:err)); }
+    }
+    state.running=false; showProgress(null); $('cancel').classList.add('hidden'); $('go').disabled=!state.vid;
+    if(!state.videoBlob&&!state.gifBlob) drawPreview();
+  }
+  $('go').addEventListener('click',run);
+  $('cancel').addEventListener('click',function(){ state.cancel=true; });
+
+  function saveBlobUrl(url,name){ var a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove(); }
+  function base(){ return (state.vid?state.vid.name:'video')+'_clean'; }
+  $('saveVideo').addEventListener('click',function(){ if(state.videoBlob) saveBlobUrl(state.videoUrl,base()+'.mp4'); });
+  $('saveGif').addEventListener('click',function(){ if(state.gifBlob) saveBlobUrl(state.gifUrl,base()+'.gif'); });
+
+  syncBoxUI(); $('fillOpts').classList.remove('hidden');
+  /* blank preview until a file is chosen */
+  pg.fillStyle='#111'; pg.fillRect(0,0,pv.width,pv.height); pg.fillStyle='#8a93a8'; pg.font='16px sans-serif'; pg.textAlign='center'; pg.fillText('Choose a video to start',pv.width/2,pv.height/2);
+})();
+
+</script>
+</body>
+</html>
