@@ -37,8 +37,11 @@
     .thumbs { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
     .thumbs figure { margin:0; } .thumbs figcaption { font-size:11px; color:var(--muted); text-align:center; margin-top:3px; }
     .thumbs canvas { width:100%; height:auto; border-radius:10px; background:#e9ebf3; display:block; }
+    /* the whole frame always fits on screen, so there is nothing to scroll inside the preview (touch drags draw the box) */
+    .stage { overflow:hidden; max-height:none; }
+    .stage canvas, .stage video, .stage img { max-width:100%; max-height:72vh; width:auto; height:auto; }
     .layout > .controls:last-child { position:sticky; top:12px; align-self:start; }
-    @media (max-width:900px){ .layout > .controls:last-child { order:-1; top:0; z-index:5; } .layout > .controls:last-child .panel { padding:8px; background:#fff; } .layout > .controls:last-child .stage { max-height:38vh; } }
+    @media (max-width:900px){ .layout > .controls:last-child { order:-1; top:0; z-index:5; } .layout > .controls:last-child .panel { padding:8px; background:#fff; } .stage canvas, .stage video, .stage img { max-height:34vh; } }
     .hidden { display:none !important; }
   </style>
 </head>
